@@ -1,104 +1,171 @@
-# Multi-Source Customer Data ETL — Interview Preparation
+# Multi-Source Customer Data ETL — Resume-Aligned Interview Preparation
 
-> Reference architecture and simulated examples, NOT verified professional achievements. Replace assumptions with actual project facts before interviews.
+**Source:** Data_engineering_resume.pdf, second Data Engineering project under Cognizant.  
+**Evidence labels:** **Resume fact** = explicitly stated in resume; **Derived** = arithmetic from resume values; **Illustrative** = possible design or answer, not confirmed implementation.
 
 ## 1. Problem Statement
-Customer information is spread across CRM PostgreSQL, SQL Server orders, support REST APIs, and marketing CSV files. Formats, identifiers, and update frequencies differ. Duplicate and missing records make customer reporting unreliable. Goal: produce a trusted daily customer view.
 
-**Interview wording:** The business had customer information in different systems. The pipeline collected, cleaned, matched, and published the data in one place for reporting.
+**Resume fact:** Customer, order, and support records needed to be consolidated into a consistent dataset for reporting across business teams. The original customer data refresh took **60 minutes**.
 
-## 2. Technologies Used (illustrative)
-| Tool | Role |
+**Simple explanation:** "The company had customer-related data coming from different systems. We needed to combine it into a consistent dataset for reporting, but processing the full source was slow."
+
+**Illustrative context, not confirmed:** Different systems may have different formats, identifiers, and update frequencies. The resume does not identify specific databases, APIs, or file types.
+
+## 2. Technologies Used
+
+**Resume-confirmed project stack:**
+
+| Technology | Role in this project |
 |---|---|
-| Python | API and file extraction |
-| PostgreSQL, SQL Server, REST API, CSV | Example source systems |
-| Amazon S3 | Raw and curated storage |
-| PySpark | Cleaning, joining, deduplication |
-| Apache Airflow | Scheduling, retries, dependencies |
-| Amazon Redshift | Analytics warehouse |
-| SQL | Validation and reporting |
-| CloudWatch, IAM, Secrets Manager | Monitoring and security |
+| Python | Incremental ETL jobs |
+| Docker | Package jobs for deployment |
+| Kubernetes | Orchestrate execution of Python jobs |
+| AWS S3 | Store partitioned datasets |
+| Amazon Athena | Analyze data stored in S3 |
+
+**Do not substitute:** PostgreSQL, SQL Server, Redshift, or PySpark as actual project technologies without verification. Airflow appears in the general skills section of the resume, but **not** in this project's technology list or bullets.
 
 ## 3. Engineering Architecture
-Source databases / API / CSV → Python extractors → S3 raw zone → PySpark transformations → S3 curated Parquet → Redshift staging and MERGE → customer analytics.
 
-Airflow orchestrates every step and logs run IDs, row counts, timestamps, failures, and watermarks.
+```text
+Customer records ─┐
+Order records ─────┼──> Incremental Python ETL jobs
+Support records ───┘           |
+                               v
+                      Docker containers
+                               |
+                               v
+                    Kubernetes execution
+                               |
+                               v
+                   Partitioned datasets in S3
+                               |
+                               v
+                       Amazon Athena
+                               |
+                               v
+                    Business team reporting
+```
 
-**Detailed flow:**
-1. Extract changes from databases using CDC or a reliable updated timestamp. Paginate APIs and detect new CSV files.
-2. Land immutable source copies in S3 with source name, ingestion date, and run ID.
-3. Validate required fields, types, schema, and counts. Quarantine invalid records.
-4. Standardize emails, phones, timestamps, and column names using PySpark.
-5. Deduplicate within each source by primary key and most recent business timestamp.
-6. Resolve cross-system identities using verified mappings; flag ambiguous matches rather than guessing.
-7. Create curated customer, orders, and support datasets in Parquet.
-8. Stage Redshift data, reconcile counts, then publish with transactional upserts.
-9. Advance the incremental watermark only after successful publication.
+**Resume fact:** The jobs were incremental, ran on Kubernetes, used Docker for deployment, and produced partitioned S3 datasets for Athena analysis.
 
-**Example tables:** dim_customer(customer_sk, source_ids, email_normalized, updated_at); fact_orders(order_id, customer_sk, amount, order_time); fact_support_tickets(ticket_id, customer_sk, opened_at, status).
+**Illustrative implementation sequence (verify before claiming):**
+1. Identify a batch of records changed since the last successful refresh.
+2. Read those records using Python.
+3. Standardize and consolidate customer, order, and support fields.
+4. Write the resulting dataset into appropriate S3 partitions.
+5. Make the partitioned data queryable through Athena.
+6. Track completion and rerun failed work safely.
 
-## 4. Design Choices and Impact
-| Choice | Reason | Trade-off |
+The resume does **not** state the precise change-detection mechanism, scheduling service, data model, file format, partition key, or job failure handling. Those details should be confirmed.
+
+## 4. Reasons for Design Choices and Their Impact
+
+| Design | Why it makes sense | Resume support |
 |---|---|---|
-| S3 raw layer | Replay and audit source data | Additional storage |
-| Incremental extraction | Avoid daily full scans | Must handle deletes and late updates |
-| PySpark + Parquet | Distributed transformations and columnar storage | Overhead for small workloads |
-| Airflow | Visible dependencies, retries, and alerts | Operational complexity |
-| Redshift staging + MERGE | Controlled upserts and publication | Requires stable keys and transactions |
-| Quarantine invalid rows | Preserve evidence while protecting reporting | Requires remediation process |
+| Incremental processing | Avoid reprocessing unchanged source records | Confirmed; only 8% changed |
+| Python jobs | Flexible data extraction and transformation | Confirmed |
+| Docker | Consistent packaging and deployment | Confirmed |
+| Kubernetes | Execute and manage containerized workloads | Confirmed |
+| Partitioned S3 datasets | Reduce unnecessary scanning for suitable Athena queries | Confirmed use; exact partition strategy unspecified |
+| Athena | Query datasets in S3 for analysis | Confirmed |
 
-**Incremental example:** Read changed rows with a small overlap from the last committed watermark to a fixed extraction cutoff. Deduplicate by source primary key and latest update. Do not advance the watermark until the warehouse load succeeds. For deletions use CDC tombstones or explicit deletion markers.
+**Interview wording:** "The biggest optimization was incremental processing. Instead of processing all 1.8 million source rows every time, the refresh focused on the 8% that changed."
 
-## 5. Results — SIMULATED ONLY
-| Metric | Hypothetical baseline | Hypothetical result |
-|---|---:|---:|
-| Daily rows | 2 million | 2 million |
-| Runtime | 180 minutes | 55 minutes |
-| Duplicate records needing attention | 8% | 0.5% |
-| Reporting freshness | 24–48 hours | Within 2 hours of scheduled load |
+## 5. Results — From Resume, Not Simulated
 
-The hypothetical runtime reduction is about 69.4%. None of these figures has been verified against a real project.
+| Metric | Value | Evidence |
+|---|---:|---|
+| Total source rows | 1,800,000 | Resume fact |
+| Records changed per refresh | 8% | Resume fact |
+| Records processed in incremental scope | 144,000 | Derived: 1,800,000 × 0.08 |
+| Unchanged records avoided | 1,656,000 | Derived |
+| Processing-volume reduction | 92% | Resume fact |
+| Previous refresh runtime | 60 minutes | Resume fact |
+| New refresh runtime | 12 minutes | Resume fact |
+| Runtime reduction | 80% | Derived: (60−12)/60 |
+| Runtime speedup | 5× | Derived |
+| Time saved per daily run | 48 minutes | Derived |
+| Time saved across 30 daily runs | 24 hours | Resume fact and derived: 48 × 30 = 1,440 minutes |
+
+**Important distinction:** The **92% reduction** is in records processed, whereas the **80% reduction** is in elapsed refresh time. Do not confuse the two.
 
 ## 6. Evaluation of Results
-Compare source, landed, accepted, quarantined, and published row counts. Check unique business keys, source-to-target reconciliation, customer match accuracy, freshness lag, success rates, rerun idempotency, processing cost, and performance at 2x and 5x volume. Establish actual baselines before reporting improvement.
 
-## 7. Guardrails
-- Idempotent ingestion and upserts: reruns cannot duplicate records.
-- Quality gates: stop publication for missing critical keys or failed reconciliations.
-- Security: encrypt PII, restrict IAM permissions, mask sensitive logs, and use Secrets Manager.
-- Observability: log batch IDs, watermarks, counts, exceptions, and SLA alerts.
-- Schema drift: detect changes before downstream breakage.
-- Recovery: retry transient failures, quarantine malformed rows, and replay failed batches.
-- Compliance: define retention, deletion, and access controls for customer data.
-- Late arrivals and deletes: use overlap/CDC and process source deletion signals.
+**Supported outcome:** The resume reports a drop from 60 minutes to 12 minutes while narrowing the refresh to 8% of a 1.8-million-row source.
 
-## 8. Likely Interview Questions
-**Why S3 before Redshift?** It preserves raw data for replay and separates ingestion from processing.
+**What to validate in a real evaluation (not claimed in resume):**
+- Compare source change counts with records ingested and published.
+- Reconcile customer, order, and support totals.
+- Measure Athena query latency and bytes scanned for partition-filtered queries.
+- Test reruns for duplicates or missing updates.
+- Verify whether the 12-minute refresh time is typical across multiple days.
+- Check correctness for late-arriving changes and deletions.
 
-**Why Spark instead of pandas?** Spark distributes large transformations; pandas can be simpler for smaller datasets.
+## 7. Guardrails — Recommended, Not Confirmed
 
-**How did you deduplicate?** By source primary key and latest update, followed by carefully governed cross-source identity matching.
+The resume does not list guardrail implementations. The following are interview discussion points, **not statements of completed work**:
 
-**What happens when a task fails?** Airflow retries temporary failures; watermarks advance only after success, so the batch can be rerun safely.
+1. Maintain a checkpoint or watermark and advance it only after successful processing.
+2. Make writes idempotent so a retry does not duplicate customer data.
+3. Validate required identifiers, data types, and row counts.
+4. Detect late-arriving changes and source deletions.
+5. Restrict access to customer data with IAM and encryption.
+6. Log job failures and alert owners.
+7. Avoid accidental S3 partition overwrites and orphaned output.
+8. Validate Athena partition metadata and partition pruning.
 
-**What is incremental loading?** Reading only records changed since the previous successful load rather than scanning all history.
+## 8. Possible Interview Follow-up Questions
 
-**How do you handle late data?** Overlap windows or CDC positions plus idempotent upserts.
+**Q1. What was the main business problem?**  
+A: "Customer, order, and support records needed to be consolidated for reporting. The previous refresh took an hour."
 
-**How do you handle API limits?** Pagination, checkpointing, retry-after handling, and exponential backoff.
+**Q2. What exactly did you optimize?**  
+A: "The incremental refresh focused on the 8% of rows that changed rather than processing the whole 1.8-million-row source."
 
-**How do you ensure quality?** Required-field checks, uniqueness, schema checks, reconciliation, and publish-blocking rules.
+**Q3. How many rows is 8% of 1.8 million?**  
+A: "144,000 changed rows, leaving about 1,656,000 unchanged rows outside the incremental processing scope."
 
-**ETL vs ELT?** ETL transforms before the warehouse load; ELT transforms inside the warehouse. This example is primarily ETL.
+**Q4. Why did runtime improve by 80% rather than 92%?**  
+A: "The 92% refers to reduced row-processing volume. The runtime dropped from 60 to 12 minutes, which is an 80% reduction. Fixed startup, I/O, and write overhead can prevent runtime from scaling exactly with row count." The overhead explanation is illustrative.
 
-**How do you measure success?** Runtime, freshness, accuracy, cost, reliability, and recovery time.
+**Q5. Why use Docker?**  
+A: "Docker packages the Python job and its dependencies into a consistent deployable image."
 
-**What if a customer requests deletion?** Apply a governed deletion process across mapped identities and retained datasets, subject to retention rules.
+**Q6. Why Kubernetes?**  
+A: "Kubernetes runs and manages the containerized jobs." The exact scheduling and retry configuration is not in the resume.
 
-**What would you improve?** Consider CDC, data contracts, lineage, and stronger observability.
+**Q7. Why S3 and Athena?**  
+A: "S3 stores the datasets, and Athena lets teams query them. Partitioning can reduce scanned data when queries filter on partition keys."
 
-## 60-Second Interview Explanation (adapt to real experience)
-Customer data was spread across a CRM, an order system, support APIs, and CSV files. The reference design uses Python to ingest, S3 to retain raw data, PySpark to standardize and deduplicate, Airflow to orchestrate, and Redshift for reporting. Incremental extraction avoids full daily reads, and idempotent upserts make retries safe. Quality gates prevent incorrect data from reaching analytics. Performance and data-quality improvements must be measured and verified rather than assumed.
+**Q8. How did you identify changed records?**  
+A: "The resume confirms incremental processing but not whether we used timestamps, CDC, hashes, or another method. I need to verify the actual approach before giving a specific answer."
 
-## Verification Checklist
-Confirm real source systems, tools, daily volumes, scheduling, your actual responsibilities, production controls, and observed results before describing this as work you completed.
+**Q9. How did you handle duplicates?**  
+A: "The resume does not describe the deduplication rules for this project. A typical approach uses source keys and deterministic upserts, but the actual implementation needs verification."
+
+**Q10. How did you handle failed jobs?**  
+A: "The resume does not document recovery behavior. A robust approach would keep checkpoints unchanged until successful completion and make reruns safe."
+
+**Q11. How did you choose S3 partitions?**  
+A: "The resume confirms partitioned datasets but does not specify partition keys. The appropriate choice depends on query filters and data distribution."
+
+**Q12. How were 24 hours saved?**  
+A: "Each run saved 48 minutes. Over 30 daily runs, that's 1,440 minutes, or 24 hours."
+
+## 60-Second Interview Explanation — Resume-Aligned
+
+"One project was Multi-Source Customer Data ETL. We consolidated customer, order, and support records into a consistent dataset for business reporting. The pipeline used incremental Python jobs deployed with Docker and run on Kubernetes. We stored partitioned datasets in AWS S3 so they could be analyzed through Amazon Athena. The key improvement was reducing each refresh to the records that had changed: around 8% of a 1.8-million-row source. That reduced the processing volume by 92%, and refresh time dropped from 60 minutes to 12 minutes. With one daily run, that represents about 24 hours saved over 30 days."
+
+## Details to Confirm Before a Technical Interview
+
+- What were the exact source systems?
+- How were changed records detected?
+- How did the Python jobs join or reconcile customer, order, and support data?
+- What was the S3 file format and partition key?
+- How were Kubernetes jobs triggered, monitored, and retried?
+- How were Athena tables registered and refreshed?
+- How were deletes, late updates, duplicate rows, and failed runs handled?
+- Were the performance measurements observed in production or tests?
+
+**Do not present illustrative answers or architecture choices as verified professional experience.**
